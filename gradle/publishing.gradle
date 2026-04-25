@@ -1,0 +1,90 @@
+// Shared Maven publishing configuration for CodeFlow modules.
+// Reads coordinates and POM metadata from each module's gradle.properties.
+// Repositories and signing keys are provided via env vars or ~/.gradle/gradle.properties.
+
+def resolveCredential(String envName, String propName) {
+    return System.getenv(envName) ?: project.findProperty(propName)?.toString()
+}
+
+afterEvaluate {
+    publishing {
+        publications {
+            release(MavenPublication) {
+                groupId = project.findProperty("POM_GROUP_ID")
+                artifactId = project.findProperty("POM_ARTIFACT_ID")
+                version = project.findProperty("POM_VERSION")
+
+                from components.release
+
+                pom {
+                    name = project.findProperty("POM_NAME")
+                    description = project.findProperty("POM_DESCRIPTION")
+                    url = project.findProperty("POM_URL")
+                    inceptionYear = project.findProperty("POM_INCEPTION_YEAR")
+
+                    licenses {
+                        license {
+                            name = project.findProperty("POM_LICENSE_NAME")
+                            url = project.findProperty("POM_LICENSE_URL")
+                            distribution = project.findProperty("POM_LICENSE_DIST")
+                        }
+                    }
+                    developers {
+                        developer {
+                            id = project.findProperty("POM_DEVELOPER_ID")
+                            name = project.findProperty("POM_DEVELOPER_NAME")
+                            url = project.findProperty("POM_DEVELOPER_URL")
+                        }
+                    }
+                    scm {
+                        url = project.findProperty("POM_SCM_URL")
+                        connection = project.findProperty("POM_SCM_CONNECTION")
+                        developerConnection = project.findProperty("POM_SCM_DEV_CONNECTION")
+                    }
+                }
+            }
+        }
+
+        repositories {
+            // Local file repo for testing — `./gradlew :codeflow-sdk:publishReleasePublicationToLocalRepository`
+            maven {
+                name = "Local"
+                url = uri(layout.buildDirectory.dir("repo"))
+            }
+
+            // GitHub Packages — needs GITHUB_ACTOR + GITHUB_TOKEN (the workflow provides these)
+            maven {
+                name = "GitHubPackages"
+                url = uri("https://maven.pkg.github.com/SynclineCode/codeflow-sdk")
+                credentials {
+                    username = resolveCredential("GITHUB_ACTOR", "gpr.user")
+                    password = resolveCredential("GITHUB_TOKEN", "gpr.key")
+                }
+            }
+
+            // Sonatype OSSRH (Maven Central). Snapshots route to the snapshot repo.
+            maven {
+                name = "MavenCentral"
+                def isSnapshot = version.toString().endsWith("SNAPSHOT")
+                def releasesUrl = "https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/"
+                def snapshotsUrl = "https://s01.oss.sonatype.org/content/repositories/snapshots/"
+                url = uri(isSnapshot ? snapshotsUrl : releasesUrl)
+                credentials {
+                    username = resolveCredential("OSSRH_USERNAME", "ossrhUsername")
+                    password = resolveCredential("OSSRH_PASSWORD", "ossrhPassword")
+                }
+            }
+        }
+    }
+
+    signing {
+        def signingKey = resolveCredential("SIGNING_KEY", "signingKey")
+        def signingPassword = resolveCredential("SIGNING_PASSWORD", "signingPassword")
+        // Skip signing entirely when no key is provided (local dev, GitHub Packages-only releases).
+        required = { signingKey != null && signingPassword != null && !version.toString().endsWith("SNAPSHOT") }
+        if (signingKey != null && signingPassword != null) {
+            useInMemoryPgpKeys(signingKey, signingPassword)
+            sign publishing.publications.release
+        }
+    }
+}

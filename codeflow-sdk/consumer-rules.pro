@@ -1,0 +1,2 @@
+-keep class com.codeflow.sdk.CodeFlowLogger { *; }
+-keep class com.codeflow.sdk.CodeFlowConfig { *; }

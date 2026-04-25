@@ -1,0 +1,50 @@
+name: Publish CodeFlow SDK
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Publishing target"
+        required: true
+        default: "github"
+        type: choice
+        options:
+          - github
+          - mavenCentral
+          - both
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Publish to GitHub Packages
+        if: ${{ github.event_name == 'release' || inputs.target == 'github' || inputs.target == 'both' }}
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./gradlew :codeflow-sdk:publishReleasePublicationToGitHubPackagesRepository
+
+      - name: Publish to Maven Central
+        if: ${{ inputs.target == 'mavenCentral' || inputs.target == 'both' }}
+        env:
+          OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+        run: ./gradlew :codeflow-sdk:publishReleasePublicationToMavenCentralRepository
