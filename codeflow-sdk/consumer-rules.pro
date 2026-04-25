@@ -1,2 +1,6 @@
 -keep class com.codeflow.sdk.CodeFlowLogger { *; }
 -keep class com.codeflow.sdk.CodeFlowConfig { *; }
+-keep class com.codeflow.sdk.analytics.CodeFlowAnalytics { *; }
+-keep class com.codeflow.sdk.analytics.AnalyticsConfig { *; }
+-keep class com.codeflow.sdk.analytics.AnalyticsEvent { *; }
+-keep interface com.codeflow.sdk.analytics.AnalyticsSink { *; }

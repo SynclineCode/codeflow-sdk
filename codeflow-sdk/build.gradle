@@ -13,6 +13,7 @@ android {
         minSdk 24
         consumerProguardFiles "consumer-rules.pro"
         buildConfigField "String", "LOG_API_URL", "\"https://www.synclinelabs.com/api/logs\""
+        buildConfigField "String", "ANALYTICS_API_URL", "\"https://www.synclinelabs.com/api/analytics\""
     }
 
     buildFeatures {
@@ -44,6 +45,12 @@ android {
 
 dependencies {
     implementation "androidx.lifecycle:lifecycle-process:2.7.0"
+
+    // The analytics module reads Compose's SemanticsOwner. compileOnly keeps
+    // Compose out of the SDK's transitive dependencies — host apps that use
+    // Compose already supply it; non-Compose hosts hit a class-name check
+    // that short-circuits the traversal.
+    compileOnly "androidx.compose.ui:ui:1.5.4"
 }
 
 apply from: "$rootDir/gradle/publishing.gradle"
