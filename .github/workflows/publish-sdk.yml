@@ -33,18 +33,21 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
 
+      - name: Build and test
+        run: ./gradlew :codeflow-sdk:assembleRelease :codeflow-sdk:test
+
       - name: Publish to GitHub Packages
         if: ${{ github.event_name == 'release' || inputs.target == 'github' || inputs.target == 'both' }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./gradlew :codeflow-sdk:publishReleasePublicationToGitHubPackagesRepository
+        run: ./gradlew :codeflow-sdk:publishMavenPublicationToGitHubPackagesRepository
 
-      - name: Publish to Maven Central
+      - name: Publish to Maven Central (Sonatype Central Portal)
         if: ${{ inputs.target == 'mavenCentral' || inputs.target == 'both' }}
         env:
-          OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
-          OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
-        run: ./gradlew :codeflow-sdk:publishReleasePublicationToMavenCentralRepository
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
+        run: ./gradlew :codeflow-sdk:publishToMavenCentral --no-configuration-cache

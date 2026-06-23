@@ -10,6 +10,9 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // The sample app consumes the published SDK coordinate; resolve it from a
+        // local `publishToMavenLocal` until it is available on Maven Central.
+        mavenLocal()
     }
 }
 rootProject.name = "codeflow-sdk"

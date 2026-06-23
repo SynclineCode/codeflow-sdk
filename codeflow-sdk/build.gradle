@@ -1,8 +1,10 @@
+import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
+import com.vanniktech.maven.publish.SonatypeHost
+
 plugins {
     id "com.android.library"
     id "org.jetbrains.kotlin.android"
-    id "maven-publish"
-    id "signing"
+    id "com.vanniktech.maven.publish"
 }
 
 android {
@@ -35,10 +37,11 @@ android {
         jvmTarget = "17"
     }
 
-    publishing {
-        singleVariant("release") {
-            withSourcesJar()
-            withJavadocJar()
+    testOptions {
+        unitTests {
+            // Let JVM unit tests run against android.* stubs (e.g. android.util.Log)
+            // without throwing "Method ... not mocked".
+            returnDefaultValues = true
         }
     }
 }
@@ -51,6 +54,42 @@ dependencies {
     // Compose already supply it; non-Compose hosts hit a class-name check
     // that short-circuits the traversal.
     compileOnly "androidx.compose.ui:ui:1.5.4"
+
+    testImplementation "junit:junit:4.13.2"
 }
 
-apply from: "$rootDir/gradle/publishing.gradle"
+// Maven Central publishing via the Sonatype Central Portal (central.sonatype.com).
+// Coordinates and POM metadata are read from gradle.properties (GROUP, VERSION_NAME,
+// POM_ARTIFACT_ID, POM_NAME, POM_DESCRIPTION, POM_URL, POM_LICENSE_*, POM_DEVELOPER_*,
+// POM_SCM_*) by the vanniktech plugin.
+//
+// Credentials come from gradle properties / env vars:
+//   ORG_GRADLE_PROJECT_mavenCentralUsername / mavenCentralPassword  (Portal token)
+//   ORG_GRADLE_PROJECT_signingInMemoryKey                           (armored PGP private key)
+//   ORG_GRADLE_PROJECT_signingInMemoryKeyPassword
+mavenPublishing {
+    publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL, true)
+    // Maven Central requires signed artifacts. Sign only when a PGP key is
+    // configured (ORG_GRADLE_PROJECT_signingInMemoryKey maps to this property)
+    // so publishToMavenLocal and GitHub Packages releases work without one.
+    if (project.findProperty("signingInMemoryKey") != null) {
+        signAllPublications()
+    }
+    configure(new AndroidSingleVariantLibrary("release", true, true))
+}
+
+// GitHub Packages remains available alongside Central for internal consumers.
+afterEvaluate {
+    publishing {
+        repositories {
+            maven {
+                name = "GitHubPackages"
+                url = uri("https://maven.pkg.github.com/SynclineCode/codeflow-sdk")
+                credentials {
+                    username = System.getenv("GITHUB_ACTOR") ?: project.findProperty("gpr.user")?.toString()
+                    password = System.getenv("GITHUB_TOKEN") ?: project.findProperty("gpr.key")?.toString()
+                }
+            }
+        }
+    }
+}

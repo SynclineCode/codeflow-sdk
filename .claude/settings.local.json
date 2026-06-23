@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh auth *)",
+      "Bash(gh repo *)",
+      "Bash(git push *)",
+      "Read(//Users/matthewroberts/.gradle/**)",
+      "Bash(env)",
+      "Bash(gh secret *)",
+      "Bash(./gradlew :codeflow-sdk:tasks --group=publishing)",
+      "Bash(./gradlew :codeflow-sdk:tasks --all)",
+      "Bash(./gradlew :codeflow-sdk:publishToMavenLocal)",
+      "Bash(./gradlew :codeflow-sdk:generatePomFileForMavenPublication)",
+      "Bash(git checkout *)",
+      "Bash(git add *)"
+    ]
+  }
+}
