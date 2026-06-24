@@ -1,0 +1,16 @@
+# JitPack build configuration.
+# https://docs.jitpack.io/android/
+#
+# JitPack checks out a git tag, builds with the JDK below, and serves whatever
+# is published to ~/.m2. We pass JitPack's own coordinate env vars so the
+# published artifact matches the coordinate consumers request:
+#   GROUP   -> com.github.SynclineCode   (-PPOM_GROUP_ID)
+#   VERSION -> the git tag being built   (-PPOM_VERSION)
+#   ARTIFACT (= repo name "codeflow-sdk") is already the artifactId.
+# Without this, Gradle Module Metadata's embedded coordinates wouldn't match
+# the request and resolution would fail.
+jdk:
+  - openjdk17
+
+install:
+  - ./gradlew :codeflow-sdk:publishToMavenLocal -PPOM_GROUP_ID=$GROUP -PPOM_VERSION=$VERSION
