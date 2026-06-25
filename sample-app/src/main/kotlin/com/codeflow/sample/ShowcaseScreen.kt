@@ -78,7 +78,7 @@ import com.codeflow.sdk.analytics.CodeFlowAnalytics
 @Composable
 fun ShowcaseScreen() {
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("Buttons", "Inputs", "Lists", "Events")
+    val tabs = listOf("Buttons", "Inputs", "Lists", "Events", "Crash")
 
     var navIndex by remember { mutableStateOf(0) }
     val navItems = listOf(
@@ -142,6 +142,7 @@ fun ShowcaseScreen() {
                 1 -> InputsPane()
                 2 -> ListsPane()
                 3 -> EventsPane()
+                4 -> CrashPane()
             }
         }
     }
@@ -407,6 +408,43 @@ private fun EventsPane() {
                 HorizontalDivider()
             }
         }
+    }
+}
+
+@Composable
+private fun CrashPane() {
+    // Exercises CodeFlowCrashHandler: each button throws an uncaught exception.
+    // The handler should upload a FATAL log before the process is torn down.
+    // The "[marker-7f3a9c]" token makes the crash easy to find in the logs.
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        SectionHeader("Crash handler test")
+        Text(
+            "Each button throws an uncaught exception. CodeFlowCrashHandler " +
+                "catches it, uploads a FATAL log, then lets the app crash as usual."
+        )
+        Button(
+            onClick = {
+                throw RuntimeException(
+                    "CodeFlow crash-test: uncaught on main thread [marker-7f3a9c]"
+                )
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Crash on main thread") }
+        OutlinedButton(
+            onClick = {
+                Thread {
+                    throw IllegalStateException(
+                        "CodeFlow crash-test: uncaught on background thread [marker-7f3a9c]"
+                    )
+                }.start()
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Crash on background thread") }
     }
 }
 

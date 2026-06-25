@@ -40,6 +40,7 @@ object CodeFlowLogger : DefaultLifecycleObserver {
         apiUrl = "${BuildConfig.LOG_API_URL.trimEnd('/')}/${config.applicationId}"
         debugLogging = config.debugLogging
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)
+        if (config.captureCrashes) CodeFlowCrashHandler.install()
         info(TAG, "CodeFlowLogger initialized")
     }
 
@@ -66,6 +67,29 @@ object CodeFlowLogger : DefaultLifecycleObserver {
     fun fatal(tag: String, message: String, throwable: Throwable? = null, metadata: Map<String, Any>? = null) {
         val meta = buildThrowableMetadata(throwable, metadata)
         enqueue("ERROR", tag, "[FATAL] $message", meta)
+        flushSync()
+    }
+
+    /**
+     * Record an uncaught crash and upload it synchronously on the calling thread.
+     *
+     * Intended to be called from [CodeFlowCrashHandler] on a dedicated upload
+     * thread: the process is about to be torn down, so the buffer must be drained
+     * over the network before control returns. Unlike [fatal], the caller owns the
+     * thread, which keeps the blocking network call off the (likely dying) crashing
+     * thread and out of NetworkOnMainThread's way.
+     */
+    fun reportCrash(thread: Thread, throwable: Throwable) {
+        if (!initialized.get()) return
+        val meta = buildThrowableMetadata(
+            throwable,
+            mapOf(
+                "thread_name" to thread.name,
+                "thread_id" to thread.id,
+                "crash" to true
+            )
+        )
+        enqueue("ERROR", TAG, "[FATAL] Uncaught exception on thread '${thread.name}'", meta)
         flushSync()
     }
 
