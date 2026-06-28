@@ -20,7 +20,18 @@ import java.util.concurrent.atomic.AtomicBoolean
 object CodeFlowLogger : DefaultLifecycleObserver {
 
     private const val TAG = "CodeFlowLogger"
+
+    // Uploads are bounded two ways: by entry count and by serialized byte size.
+    // The byte cap keeps every request comfortably under the server's body limit
+    // so a flush can never be rejected for being too large; larger buffers are
+    // split across multiple requests.
     private const val BATCH_SIZE = 1000
+    private const val MAX_BATCH_BYTES = 512 * 1024
+
+    // Upper bound on buffered entries. If uploads keep failing (offline, server
+    // down) the buffer is trimmed oldest-first so logging can never grow memory
+    // without limit.
+    private const val MAX_BUFFER_ENTRIES = 10_000
 
     private lateinit var applicationId: String
     private lateinit var apiUrl: String
@@ -129,6 +140,7 @@ object CodeFlowLogger : DefaultLifecycleObserver {
             }))
         }
         buffer.add(entry)
+        trimToCap()
 
         if (debugLogging) {
             when (level) {
@@ -154,23 +166,47 @@ object CodeFlowLogger : DefaultLifecycleObserver {
         drainAndUpload()
     }
 
+    /** What to do with a batch after an upload attempt. */
+    private enum class UploadResult { SUCCESS, RETRY, DROP }
+
     private fun drainAndUpload() {
         if (!isFlushing.compareAndSet(false, true)) return
         try {
             // Snapshot and clear — CopyOnWriteArrayList iterators don't support remove()
             val snapshot = buffer.toList()
             buffer.clear()
-            for (i in snapshot.indices step BATCH_SIZE) {
-                val batch = snapshot.subList(i, minOf(i + BATCH_SIZE, snapshot.size))
-                uploadBatch(batch)
+            val retry = ArrayList<JSONObject>()
+            var i = 0
+            while (i < snapshot.size) {
+                // Build a batch bounded by both entry count and serialized bytes.
+                val batch = ArrayList<JSONObject>()
+                var bytes = 0
+                while (i < snapshot.size && batch.size < BATCH_SIZE) {
+                    val entry = snapshot[i]
+                    val entryBytes = entry.toString().toByteArray(Charsets.UTF_8).size
+                    // Always include at least one entry, even if it alone exceeds
+                    // the byte cap, so an oversized entry can't wedge the loop.
+                    if (batch.isNotEmpty() && bytes + entryBytes > MAX_BATCH_BYTES) break
+                    batch.add(entry)
+                    bytes += entryBytes
+                    i++
+                }
+                if (uploadBatch(batch) == UploadResult.RETRY) {
+                    retry.addAll(batch)
+                }
+            }
+            if (retry.isNotEmpty()) {
+                // Re-queue only transient failures for the next flush, then cap.
+                buffer.addAll(0, retry)
+                trimToCap()
             }
         } finally {
             isFlushing.set(false)
         }
     }
 
-    private fun uploadBatch(batch: List<JSONObject>) {
-        try {
+    private fun uploadBatch(batch: List<JSONObject>): UploadResult {
+        return try {
             val payload = JSONObject().apply {
                 put("logs", JSONArray(batch))
             }
@@ -187,14 +223,37 @@ object CodeFlowLogger : DefaultLifecycleObserver {
                 writer.flush()
             }
             val responseCode = connection.responseCode
-            if (responseCode !in 200..299) {
-                Log.w(TAG, "Log upload failed with status $responseCode")
-                buffer.addAll(0, batch)
-            }
             connection.disconnect()
+            when {
+                responseCode in 200..299 -> UploadResult.SUCCESS
+                responseCode in 400..499 -> {
+                    // Client error (e.g. 413 payload too large, 400 bad request).
+                    // Re-sending the identical batch will fail the same way and
+                    // would loop forever, so drop it.
+                    Log.w(TAG, "Dropping ${batch.size} log(s): server rejected batch with status $responseCode")
+                    UploadResult.DROP
+                }
+                else -> {
+                    // 5xx / unexpected — treat as transient and retry later.
+                    Log.w(TAG, "Log upload failed with status $responseCode; will retry")
+                    UploadResult.RETRY
+                }
+            }
         } catch (e: Exception) {
-            Log.w(TAG, "Log upload failed: ${e.message}")
-            buffer.addAll(0, batch)
+            // Network error / timeout — transient, retry later.
+            Log.w(TAG, "Log upload failed: ${e.message}; will retry")
+            UploadResult.RETRY
+        }
+    }
+
+    /** Drop oldest entries if the buffer has grown past [MAX_BUFFER_ENTRIES]. */
+    private fun trimToCap() {
+        var overflow = buffer.size - MAX_BUFFER_ENTRIES
+        if (overflow <= 0) return
+        Log.w(TAG, "Log buffer over $MAX_BUFFER_ENTRIES entries; dropping $overflow oldest")
+        while (overflow > 0 && buffer.isNotEmpty()) {
+            buffer.removeAt(0)
+            overflow--
         }
     }
 
